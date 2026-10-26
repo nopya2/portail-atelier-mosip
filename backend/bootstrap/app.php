@@ -2,10 +2,12 @@
 
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureAdmin;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -22,8 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Réponses JSON homogènes pour l'API, avec l'identifiant de corrélation
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! $request->is('api/*') || $e instanceof \Illuminate\Validation\ValidationException
-                || $e instanceof \Illuminate\Auth\AuthenticationException) {
+            if (! $request->is('api/*') || $e instanceof ValidationException
+                || $e instanceof AuthenticationException) {
                 return null; // rendu Laravel par défaut
             }
 

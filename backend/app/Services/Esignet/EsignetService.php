@@ -68,8 +68,8 @@ class EsignetService
      *
      * @param  array{state: string, code: ?string, error: ?string, error_description: ?string}  $retour
      * @return array{statut: 'connecte', user: User}
-     *       | array{statut: 'finalisation', jeton: string}
-     *         (« connecte » : le contrôleur ouvre la session et renvoie le jeton d'API)
+     *                                               | array{statut: 'finalisation', jeton: string}
+     *                                               (« connecte » : le contrôleur ouvre la session et renvoie le jeton d'API)
      */
     public function traiterRetour(array $retour, Request $request): array
     {

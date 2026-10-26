@@ -10,6 +10,7 @@ use App\Support\Telephone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\Cookie;
 
 /**
  * Points d'entrée HTTP de la création de compte et de la connexion — uniquement avec eSignet.
@@ -110,7 +111,7 @@ class EsignetController extends Controller
     }
 
     /** Cookie HttpOnly liant le parcours au navigateur (limité aux routes eSignet). */
-    private function cookieParcours(string $valeur): \Symfony\Component\HttpFoundation\Cookie
+    private function cookieParcours(string $valeur): Cookie
     {
         return cookie(
             config('esignet.cookie'),
