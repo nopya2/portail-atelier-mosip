@@ -12,6 +12,12 @@
 #   DB_DATABASE=esignet_portail
 #   DB_USERNAME=esignet_portail
 #
+# Services mutualisés du serveur (valeurs par défaut = noms du poste de développement) :
+#
+#   MUTUALISE_NETWORK=mutualise_net              (réseau Docker externe, défaut bd_mutualisee_net)
+#   DB_HOST=pg_mutualise                         (conteneur PostgreSQL sur ce réseau)
+#   MAIL_HOST=mailpit_mutualise                  (conteneur SMTP sur ce réseau)
+#
 # Portail et API partagent la même origine (nginx du frontend relaie /api) : une seule URL publique.
 # Nécessite Docker Compose ≥ 2.24 (balises !reset / !override).
 name: portail_${STACK:?STACK manquant (dev|prod)}
@@ -23,6 +29,8 @@ x-deploy-env: &deploy-env
   ESIGNET_REDIRECT_URI: ${PUBLIC_URL}/auth/esignet/retour
   DB_DATABASE: ${DB_DATABASE:?DB_DATABASE manquant (.env.docker)}
   DB_USERNAME: ${DB_USERNAME:?DB_USERNAME manquant (.env.docker)}
+  DB_HOST: ${DB_HOST:-pg_mutualise}
+  MAIL_HOST: ${MAIL_HOST:-mailpit_mutualise}
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
 services:
@@ -43,3 +51,8 @@ services:
     container_name: portail_${STACK}_frontend
     ports: !override
       - "127.0.0.1:${HTTP_PORT:?HTTP_PORT manquant (.env.docker)}:80"
+
+networks:
+  bd_mutualisee_net:
+    external: true
+    name: ${MUTUALISE_NETWORK:-bd_mutualisee_net}

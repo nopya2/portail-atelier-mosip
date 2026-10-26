@@ -36,16 +36,29 @@ runs:
 
     - name: Préparer SSH
       shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
       run: |
         mkdir -p ~/.ssh && chmod 700 ~/.ssh
-        echo "${{ inputs.ssh-private-key }}" > ~/.ssh/deploy_key
-        echo "${{ inputs.ssh-known-hosts }}" > ~/.ssh/known_hosts
+        # Retire les \r d'un copier-coller Windows ; la clé doit se terminer par un saut de ligne
+        printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+        printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
         chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+        # Clé uniquement, sans repli sur le mot de passe ni prompt
+        printf 'Host *\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n  BatchMode yes\n' > ~/.ssh/config
+        chmod 600 ~/.ssh/config
+        if ! ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null 2>&1; then
+          echo "::error::SSH_PRIVATE_KEY illisible (clé incomplète, protégée par une phrase de passe ou mal collée)"
+          exit 1
+        fi
+        # Empreinte publique, à comparer avec celle de authorized_keys sur le serveur
+        echo "Empreinte de la clé : $(ssh-keygen -l -f ~/.ssh/deploy_key)"
 
     - name: Copier les fichiers compose
       shell: bash
       run: |
-        scp -i ~/.ssh/deploy_key docker-compose.yml docker-compose.deploy.yml \
+        scp docker-compose.yml docker-compose.deploy.yml \
           "${{ inputs.ssh-user }}@${{ inputs.ssh-host }}:${{ inputs.deploy-path }}/"
 
     - name: Tirer les images et relancer
@@ -54,18 +67,19 @@ runs:
         REGISTRY_TOKEN: ${{ inputs.registry-token }}
         REGISTRY_USER: ${{ github.actor }}
       run: |
-        ssh -i ~/.ssh/deploy_key "${{ inputs.ssh-user }}@${{ inputs.ssh-host }}" \
+        ssh "${{ inputs.ssh-user }}@${{ inputs.ssh-host }}" \
           REGISTRY_TOKEN="$REGISTRY_TOKEN" REGISTRY_USER="$REGISTRY_USER" \
           IMAGE_PREFIX="${{ inputs.image-prefix }}" IMAGE_TAG="${{ inputs.image-tag }}" \
           DEPLOY_PATH="${{ inputs.deploy-path }}" 'bash -s' <<'EOF'
         set -euo pipefail
         cd "$DEPLOY_PATH"
         echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+        # Déconnexion même en cas d'échec : le jeton ne reste pas dans ~/.docker/config.json
+        trap 'docker logout ghcr.io > /dev/null' EXIT
         export IMAGE_PREFIX IMAGE_TAG
         compose="docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.deploy.yml"
         $compose pull backend scheduler frontend
         $compose up -d --no-build --remove-orphans
-        docker logout ghcr.io
         # Trace de la version déployée, utile pour un retour arrière (IMAGE_TAG=<sha précédent>)
         echo "$(date -Iseconds) $IMAGE_TAG" >> deployments.log
         docker image prune -f
@@ -74,4 +88,4 @@ runs:
     - name: Nettoyer
       if: always()
       shell: bash
-      run: rm -f ~/.ssh/deploy_key
+      run: rm -f ~/.ssh/deploy_key ~/.ssh/config
