@@ -1,24 +1,21 @@
-# Portail des services — intégration et déploiement continus.
+# Portail des services — intégration et déploiement continus (production uniquement).
 #
-#   PR vers dev/main      → tests (backend + frontend)
-#   push sur dev          → tests → images Docker (GHCR) → déploiement DEV (automatique)
-#   tag vX.Y.Z (sur main) → tests → images Docker (GHCR) → déploiement PRODUCTION (après approbation)
+#   PR vers main, push sur dev → tests (backend + frontend)
+#   push sur main              → tests → images Docker (GHCR) → déploiement PRODUCTION (après approbation)
+#   « Run workflow » sur main  → idem (redéploiement manuel)
 #
-# Prérequis GitHub (Settings → Environments) : environnements « dev » et « production »,
-# chacun avec ses propres secrets SSH_HOST, SSH_USER, SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
-# et ses variables DEPLOY_PATH et APP_PUBLIC_URL. « production » : reviewers obligatoires + tags v* uniquement.
-# Les secrets applicatifs (APP_KEY, DB_PASSWORD, eSignet…) et l'URL publique (PUBLIC_URL) restent
-# dans .env.docker sur chaque serveur :
-#   dev        → https://dev-portail-mosip.benga.online
-#   production → https://portail-mosip.benga.online
+# Prérequis GitHub (Settings → Environments → « production ») : secrets SSH_HOST, SSH_USER,
+# SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS ; variables DEPLOY_PATH (/srv/projects/portail-atelier-mosip)
+# et APP_PUBLIC_URL ; reviewers obligatoires ; déploiement limité à la branche main.
+# Les secrets applicatifs (APP_KEY, DB_PASSWORD, eSignet…) et l'URL publique
+# (PUBLIC_URL=https://portail-mosip.benga.online) restent dans .env.docker sur le serveur.
 name: CI/CD
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [main]
   push:
     branches: [dev, main]
-    tags: ['v*']
   workflow_dispatch:
 
 concurrency:
@@ -58,10 +55,10 @@ jobs:
 
       - name: Style (Pint)
         # Non bloquant tant que le code existant n'a pas été formaté (vendor/bin/pint)
-        continue-on-error: true
+        # continue-on-error: true
         run: vendor/bin/pint --test
 
-      - name: Tests
+      - name: Tests 
         run: |
           cp .env.example .env
           php artisan key:generate
@@ -89,7 +86,7 @@ jobs:
   images:
     name: Images Docker
     needs: [backend, frontend]
-    if: github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -114,8 +111,7 @@ jobs:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.app }}
           tags: |
             type=sha,format=long,prefix=
-            type=ref,event=branch
-            type=semver,pattern={{version}}
+            type=raw,value=latest
 
       - uses: docker/build-push-action@v6
         with:
@@ -126,34 +122,9 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
-  deploy-dev:
-    name: Déploiement DEV
-    needs: images
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    environment:
-      name: dev
-      url: ${{ vars.APP_PUBLIC_URL }}
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/deploy
-        with:
-          ssh-host: ${{ secrets.SSH_HOST }}
-          ssh-user: ${{ secrets.SSH_USER }}
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh-known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-          deploy-path: ${{ vars.DEPLOY_PATH }}
-          image-prefix: ${{ env.IMAGE_PREFIX }}
-          image-tag: ${{ github.sha }}
-          registry-token: ${{ secrets.GITHUB_TOKEN }}
-
   deploy-prod:
     name: Déploiement PRODUCTION
     needs: images
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
       name: production

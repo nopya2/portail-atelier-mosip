@@ -1,18 +1,16 @@
-# Surcharge pour les serveurs (dev, production) : images publiées par la CI au lieu du build local,
+# Surcharge pour le serveur de production : images publiées par la CI au lieu du build local,
 # URL publique au lieu de localhost. Utilisée par .github/actions/deploy :
 #
 #   IMAGE_PREFIX=ghcr.io/<owner>/<repo> IMAGE_TAG=<sha> \
 #   docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.deploy.yml up -d --no-build
 #
-# Dev et production peuvent cohabiter sur le même hôte : chaque pile a son nom de projet, ses conteneurs,
-# son port local et sa base. Variables à définir dans .env.docker du serveur :
+# Variables à définir dans .env.docker du serveur (/srv/projects/portail-atelier-mosip) :
 #
-#                 dev                                     production
-#   STACK         dev                                     prod
-#   PUBLIC_URL    https://dev-portail-mosip.benga.online  https://portail-mosip.benga.online
-#   HTTP_PORT     4211                                    4210      (cible du reverse proxy HTTPS)
-#   DB_DATABASE   esignet_portail_dev                     esignet_portail
-#   DB_USERNAME   esignet_portail_dev                     esignet_portail
+#   STACK=prod                                   (nom du projet et des conteneurs : portail_prod_*)
+#   PUBLIC_URL=https://portail-mosip.benga.online
+#   HTTP_PORT=4210                               (cible du reverse proxy HTTPS)
+#   DB_DATABASE=esignet_portail
+#   DB_USERNAME=esignet_portail
 #
 # Portail et API partagent la même origine (nginx du frontend relaie /api) : une seule URL publique.
 # Nécessite Docker Compose ≥ 2.24 (balises !reset / !override).
