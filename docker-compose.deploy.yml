@@ -1,0 +1,47 @@
+# Surcharge pour les serveurs (dev, production) : images publiées par la CI au lieu du build local,
+# URL publique au lieu de localhost. Utilisée par .github/actions/deploy :
+#
+#   IMAGE_PREFIX=ghcr.io/<owner>/<repo> IMAGE_TAG=<sha> \
+#   docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.deploy.yml up -d --no-build
+#
+# Dev et production peuvent cohabiter sur le même hôte : chaque pile a son nom de projet, ses conteneurs,
+# son port local et sa base. Variables à définir dans .env.docker du serveur :
+#
+#                 dev                                     production
+#   STACK         dev                                     prod
+#   PUBLIC_URL    https://dev-portail-mosip.benga.online  https://portail-mosip.benga.online
+#   HTTP_PORT     4211                                    4210      (cible du reverse proxy HTTPS)
+#   DB_DATABASE   esignet_portail_dev                     esignet_portail
+#   DB_USERNAME   esignet_portail_dev                     esignet_portail
+#
+# Portail et API partagent la même origine (nginx du frontend relaie /api) : une seule URL publique.
+# Nécessite Docker Compose ≥ 2.24 (balises !reset / !override).
+name: portail_${STACK:?STACK manquant (dev|prod)}
+
+x-deploy-env: &deploy-env
+  APP_URL: ${PUBLIC_URL:?PUBLIC_URL manquant (.env.docker)}
+  FRONTEND_URL: ${PUBLIC_URL}
+  CORS_ALLOWED_ORIGINS: ${PUBLIC_URL}
+  ESIGNET_REDIRECT_URI: ${PUBLIC_URL}/auth/esignet/retour
+  DB_DATABASE: ${DB_DATABASE:?DB_DATABASE manquant (.env.docker)}
+  DB_USERNAME: ${DB_USERNAME:?DB_USERNAME manquant (.env.docker)}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+  backend:
+    image: ${IMAGE_PREFIX:?IMAGE_PREFIX manquant}/backend:${IMAGE_TAG:?IMAGE_TAG manquant}
+    container_name: portail_${STACK}_backend
+    environment: *deploy-env
+    # L'API n'est jointe que par le nginx du frontend : pas de port publié sur l'hôte
+    ports: !reset []
+
+  scheduler:
+    image: ${IMAGE_PREFIX}/backend:${IMAGE_TAG}
+    container_name: portail_${STACK}_scheduler
+    environment: *deploy-env
+
+  frontend:
+    image: ${IMAGE_PREFIX}/frontend:${IMAGE_TAG}
+    container_name: portail_${STACK}_frontend
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT:?HTTP_PORT manquant (.env.docker)}:80"
