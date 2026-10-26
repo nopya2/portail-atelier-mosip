@@ -1,0 +1,93 @@
+# Portail des services — conteneurs applicatifs.
+# La base PostgreSQL et Mailpit sont les services MUTUALISÉS (pg_mutualise, mailpit_mutualise)
+# du réseau bd_mutualisee_net : rien n'est dupliqué ici.
+#
+#   docker compose --env-file .env.docker up -d --build
+#
+# Portail : http://localhost:4210   ·   API : http://localhost:8010/api
+name: portail_services
+
+x-backend-env: &backend-env
+  APP_NAME: Portail des services
+  APP_ENV: ${APP_ENV:-local}
+  APP_KEY: ${APP_KEY:?APP_KEY manquant (.env.docker)}
+  APP_DEBUG: ${APP_DEBUG:-true}
+  APP_URL: http://localhost:8010
+  APP_LOCALE: fr
+  APP_TIMEZONE: Africa/Libreville
+  FRONTEND_URL: http://localhost:4210
+  CORS_ALLOWED_ORIGINS: http://localhost:4210
+  # PostgreSQL mutualisé, vu depuis le réseau Docker
+  DB_CONNECTION: pgsql
+  DB_HOST: pg_mutualise
+  DB_PORT: "5432"
+  DB_DATABASE: esignet_portail
+  DB_USERNAME: esignet_portail
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD manquant (.env.docker)}
+  SESSION_DRIVER: database
+  CACHE_STORE: database
+  QUEUE_CONNECTION: database
+  # Journalisation : fichiers + table app_logs ; stderr pour « docker compose logs »
+  LOG_CHANNEL: stack
+  LOG_STACK: daily,database,stderr
+  LOG_LEVEL: debug
+  LOG_DB_LEVEL: warning
+  LOG_DB_RETENTION_DAYS: "30"
+  # Mailpit mutualisé (interface http://localhost:8125)
+  MAIL_MAILER: smtp
+  MAIL_HOST: mailpit_mutualise
+  MAIL_PORT: "1025"
+  MAIL_FROM_ADDRESS: no-reply@portail-services.ga
+  MAIL_FROM_NAME: Portail des services
+  PORTAIL_ADMIN_NIPS: ${PORTAIL_ADMIN_NIPS:-4A-0012-19870425}
+  # eSignet (création de compte avec identité vérifiée) — à renseigner pendant l'atelier
+  ESIGNET_ISSUER_URL: ${ESIGNET_ISSUER_URL:-}
+  ESIGNET_INTERNAL_URL: ${ESIGNET_INTERNAL_URL:-}
+  ESIGNET_CLIENT_ID: ${ESIGNET_CLIENT_ID:-}
+  ESIGNET_KEY_ID: ${ESIGNET_KEY_ID:-}
+  ESIGNET_REDIRECT_URI: http://localhost:4210/auth/esignet/retour
+
+services:
+  backend:
+    build: ./backend
+    container_name: portail_backend
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "127.0.0.1:8010:8000"
+    volumes:
+      - backend_logs:/var/www/html/storage/logs
+      # Clé privée du client OIDC (storage/app/private/esignet/client-private.pem), hors image
+      - backend_private:/var/www/html/storage/app/private
+    networks: [default, bd_mutualisee_net]
+
+  # Tâches planifiées (purge du journal au-delà de LOG_DB_RETENTION_DAYS)
+  scheduler:
+    build: ./backend
+    container_name: portail_scheduler
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment: *backend-env
+    volumes:
+      - backend_logs:/var/www/html/storage/logs
+    depends_on: [backend]
+    networks: [default, bd_mutualisee_net]
+
+  frontend:
+    build: ./frontend
+    container_name: portail_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4210:80"
+    depends_on: [backend]
+    networks: [default]
+
+volumes:
+  backend_logs:
+  backend_private:
+
+networks:
+  bd_mutualisee_net:
+    external: true

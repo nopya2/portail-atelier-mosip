@@ -1,0 +1,39 @@
+<div class="flag-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<header class="topbar">
+  <a routerLink="/" class="brand">
+    <img src="sceau.png" alt="Sceau de la République gabonaise sur le drapeau du Gabon" width="44" height="44" />
+    <span>
+      <strong>Portail des services</strong>
+      <small>Atelier MOSIP</small>
+    </span>
+  </a>
+
+  <button class="burger" type="button" (click)="menuOpen = !menuOpen" aria-label="Menu">☰</button>
+
+  <nav [class.open]="menuOpen" (click)="menuOpen = false">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Services</a>
+    @if (auth.isAuthenticated()) {
+      <a routerLink="/mes-demandes" routerLinkActive="active">Mes demandes</a>
+      @if (auth.isAdmin()) {
+        <a routerLink="/admin/journal" routerLinkActive="active">Journal</a>
+      }
+      <a routerLink="/profil" routerLinkActive="active" class="user-chip">
+        {{ auth.user()?.given_name || auth.user()?.name || "Mon compte" }}
+        <small>NIP {{ auth.user()?.nip }}</small>
+      </a>
+      <button type="button" class="btn btn-ghost" (click)="auth.logout()">Déconnexion</button>
+    } @else {
+      <a routerLink="/connexion" routerLinkActive="active">Se connecter</a>
+      <a routerLink="/inscription" class="btn btn-primary">Créer un compte</a>
+    }
+  </nav>
+</header>
+
+<main class="container">
+  <router-outlet />
+</main>
+
+<footer class="footer">
+  Environnement de démonstration — ateliers MOSIP · Données fictives
+</footer>

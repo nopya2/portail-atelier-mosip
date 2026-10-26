@@ -1,0 +1,7 @@
+.env.docker
+backend/.env
+backend/storage/app/private/
+frontend/.angular/
+frontend/dist/
+node_modules/
+vendor/
