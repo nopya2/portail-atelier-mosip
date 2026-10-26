@@ -16,6 +16,24 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Vérifier la configuration de l'environnement
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+      run: |
+        missing=""
+        for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS DEPLOY_PATH; do
+          [ -n "${!v}" ] || missing="$missing $v"
+        done
+        if [ -n "$missing" ]; then
+          echo "::error::Configuration manquante pour l'environnement « ${{ github.job }} » :$missing (secrets SSH_*, variable DEPLOY_PATH — Settings → Environments)"
+          exit 1
+        fi
+
     - name: Préparer SSH
       shell: bash
       run: |
