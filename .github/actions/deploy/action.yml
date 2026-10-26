@@ -1,0 +1,77 @@
+# Déploie une version (tag d'image) sur un serveur Docker via SSH.
+# Utilisé par les jobs deploy-dev et deploy-prod de .github/workflows/ci-cd.yml.
+name: Déployer via SSH
+description: Copie les fichiers compose, tire les images et relance les conteneurs
+
+inputs:
+  ssh-host: { required: true }
+  ssh-user: { required: true }
+  ssh-private-key: { required: true }
+  ssh-known-hosts: { required: true }
+  deploy-path: { required: true }
+  image-prefix: { required: true }
+  image-tag: { required: true }
+  registry-token: { required: true }
+
+runs:
+  using: composite
+  steps:
+    - name: Vérifier la configuration de l'environnement
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+        DEPLOY_PATH: ${{ inputs.deploy-path }}
+      run: |
+        missing=""
+        for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS DEPLOY_PATH; do
+          [ -n "${!v}" ] || missing="$missing $v"
+        done
+        if [ -n "$missing" ]; then
+          echo "::error::Configuration manquante pour l'environnement « ${{ github.job }} » :$missing (secrets SSH_*, variable DEPLOY_PATH — Settings → Environments)"
+          exit 1
+        fi
+
+    - name: Préparer SSH
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh && chmod 700 ~/.ssh
+        echo "${{ inputs.ssh-private-key }}" > ~/.ssh/deploy_key
+        echo "${{ inputs.ssh-known-hosts }}" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+    - name: Copier les fichiers compose
+      shell: bash
+      run: |
+        scp -i ~/.ssh/deploy_key docker-compose.yml docker-compose.deploy.yml \
+          "${{ inputs.ssh-user }}@${{ inputs.ssh-host }}:${{ inputs.deploy-path }}/"
+
+    - name: Tirer les images et relancer
+      shell: bash
+      env:
+        REGISTRY_TOKEN: ${{ inputs.registry-token }}
+        REGISTRY_USER: ${{ github.actor }}
+      run: |
+        ssh -i ~/.ssh/deploy_key "${{ inputs.ssh-user }}@${{ inputs.ssh-host }}" \
+          REGISTRY_TOKEN="$REGISTRY_TOKEN" REGISTRY_USER="$REGISTRY_USER" \
+          IMAGE_PREFIX="${{ inputs.image-prefix }}" IMAGE_TAG="${{ inputs.image-tag }}" \
+          DEPLOY_PATH="${{ inputs.deploy-path }}" 'bash -s' <<'EOF'
+        set -euo pipefail
+        cd "$DEPLOY_PATH"
+        echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+        export IMAGE_PREFIX IMAGE_TAG
+        compose="docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.deploy.yml"
+        $compose pull backend scheduler frontend
+        $compose up -d --no-build --remove-orphans
+        docker logout ghcr.io
+        # Trace de la version déployée, utile pour un retour arrière (IMAGE_TAG=<sha précédent>)
+        echo "$(date -Iseconds) $IMAGE_TAG" >> deployments.log
+        docker image prune -f
+        EOF
+
+    - name: Nettoyer
+      if: always()
+      shell: bash
+      run: rm -f ~/.ssh/deploy_key

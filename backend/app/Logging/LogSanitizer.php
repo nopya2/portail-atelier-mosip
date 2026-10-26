@@ -17,7 +17,9 @@ class LogSanitizer
     private const SECRET_SUFFIXES = ['password', 'token', 'tokens', 'secret', 'private_key', 'api_key', 'assertion', 'verifier'];
 
     private const MAX_DEPTH = 5;
+
     private const MAX_STRING = 4000;
+
     private const MAX_ITEMS = 50;
 
     public static function sanitize(mixed $value, int $depth = 0): mixed

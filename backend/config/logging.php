@@ -1,5 +1,7 @@
 <?php
 
+use App\Logging\AddRequestContext;
+use App\Logging\CreateDatabaseLogger;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -71,7 +73,7 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
-            'tap' => [App\Logging\AddRequestContext::class],
+            'tap' => [AddRequestContext::class],
         ],
 
         'slack' => [
@@ -127,7 +129,7 @@ return [
         // Journal centralisé (table app_logs) : erreurs backend + frontend
         'database' => [
             'driver' => 'custom',
-            'via' => App\Logging\CreateDatabaseLogger::class,
+            'via' => CreateDatabaseLogger::class,
             'connection' => 'logs',
             'level' => env('LOG_DB_LEVEL', 'warning'),
         ],
