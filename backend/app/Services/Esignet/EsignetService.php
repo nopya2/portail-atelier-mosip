@@ -57,10 +57,10 @@ class EsignetService
 
     /**
      * Prépare le parcours (state, nonce, PKCE S256, cookie HttpOnly), pousse la requête
-     * d'autorisation (PAR) et renvoie l'URL vers laquelle rediriger le navigateur.
+     * d'autorisation (PAR, si eSignet la publie) et renvoie l'URL vers laquelle rediriger le navigateur.
      *
      * @param  'creation'|'connexion'  $mode
-     * @return array{authorization_url: string, request_uri: string, transaction_id: string, cookie: string}
+     * @return array{authorization_url: string, request_uri: ?string, transaction_id: string, cookie: string}
      */
     public function demarrer(string $mode, Request $request): array
     {
@@ -80,31 +80,36 @@ class EsignetService
             'expire_at' => now()->addMinutes(config('esignet.transaction_ttl')),
         ]);
 
+        $parametres = [
+            'redirect_uri' => config('esignet.redirect_uri'),
+            'response_type' => 'code',
+            'scope' => config('esignet.scope'),
+            'state' => $state,
+            'nonce' => $nonce,
+            'code_challenge' => JWT::urlsafeB64Encode(hash('sha256', $codeVerifier, true)),
+            'code_challenge_method' => 'S256',
+            'acr_values' => implode(' ', config('esignet.acr_creation')),
+            'claims' => json_encode($this->claimsDemandes(), JSON_UNESCAPED_SLASHES),
+            'ui_locales' => config('esignet.ui_locales'),
+        ];
+
         try {
-            $par = $this->client->pousserRequete([
-                'redirect_uri' => config('esignet.redirect_uri'),
-                'response_type' => 'code',
-                'scope' => config('esignet.scope'),
-                'state' => $state,
-                'nonce' => $nonce,
-                'code_challenge' => JWT::urlsafeB64Encode(hash('sha256', $codeVerifier, true)),
-                'code_challenge_method' => 'S256',
-                'acr_values' => implode(' ', config('esignet.acr_creation')),
-                'claims' => json_encode($this->claimsDemandes(), JSON_UNESCAPED_SLASHES),
-                'ui_locales' => config('esignet.ui_locales'),
-            ]);
+            // PAR si eSignet la publie, sinon requête d'autorisation classique (mêmes state, nonce et PKCE)
+            $requestUri = $this->client->supportePar() ? $this->client->pousserRequete($parametres)['request_uri'] : null;
         } catch (Throwable $e) {
             $this->echec($transaction, $e);
             throw $e;
         }
 
-        $transaction->forceFill(['request_uri' => $par['request_uri']])->save();
+        $transaction->forceFill(['request_uri' => $requestUri])->save();
 
-        Log::info('eSignet : parcours démarré', ['transaction' => $transaction->id, 'mode' => $mode]);
+        Log::info('eSignet : parcours démarré', ['transaction' => $transaction->id, 'mode' => $mode, 'par' => $requestUri !== null]);
 
         return [
-            'authorization_url' => $this->client->urlAutorisation($par['request_uri']),
-            'request_uri' => $par['request_uri'],
+            'authorization_url' => $requestUri
+                ? $this->client->urlAutorisation($requestUri)
+                : $this->client->urlAutorisationDirecte($parametres),
+            'request_uri' => $requestUri,
             'transaction_id' => $transaction->id,
             'cookie' => $navigateur,
         ];

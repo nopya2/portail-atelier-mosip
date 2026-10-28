@@ -38,6 +38,7 @@ export class EsignetService {
    * Étape A, appelée par le bouton officiel (par_callback du plugin @mosip/sign-in-with-esignet) :
    * le backend génère state, nonce et PKCE, pousse la requête (PAR) et renvoie le request_uri ;
    * le plugin redirige ensuite vers /authorize?client_id=…&request_uri=….
+   * Sans PAR côté eSignet (request_uri nul), on suit directement l'authorization_url préparée par le backend.
    */
   async demarrer(mode: EsignetMode, retour?: string): Promise<string> {
     sessionStorage.setItem(MODE_KEY, mode);
@@ -45,14 +46,21 @@ export class EsignetService {
     if (retour) sessionStorage.setItem(RETOUR_KEY, retour);
     else sessionStorage.removeItem(RETOUR_KEY);
 
+    let res: { authorization_url: string; request_uri: string | null };
     try {
-      const res = await firstValueFrom(this.http.post<{ request_uri: string }>(`${this.api}/demarrer`, { mode }));
-      return res.request_uri;
+      res = await firstValueFrom(
+        this.http.post<{ authorization_url: string; request_uri: string | null }>(`${this.api}/demarrer`, { mode }),
+      );
     } catch (e) {
       // Le plugin redirige alors vers la page de retour avec ?error=request_uri_error : on y affichera le vrai motif
       sessionStorage.setItem(ERREUR_KEY, JSON.stringify(messageEsignet(e)));
       throw e;
     }
+    if (res.request_uri) return res.request_uri;
+
+    // La page est quittée : la promesse ne se résout jamais, le plugin n'a plus rien à faire
+    window.location.assign(res.authorization_url);
+    return new Promise<string>(() => {});
   }
 
   /** Motif détaillé d'un échec du démarrage (consommé une seule fois). */
