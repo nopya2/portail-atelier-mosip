@@ -15,8 +15,9 @@ Route::prefix('auth')->group(function () {
     Route::get('nip-format', [AuthController::class, 'nipFormat']);
 
     // Création de compte et connexion : uniquement avec eSignet
-    // (logique OIDC : App\Services\Esignet\EsignetService, à implémenter)
+    // (logique OIDC : App\Services\Esignet\EsignetService)
     Route::prefix('esignet')->middleware('throttle:esignet')->group(function () {
+        Route::get('configuration', [EsignetController::class, 'configuration']);
         Route::post('demarrer', [EsignetController::class, 'demarrer']);
         Route::post('retour', [EsignetController::class, 'retour']);
         Route::get('inscription/{jeton}', [EsignetController::class, 'inscription'])->where('jeton', '[A-Za-z0-9_-]{32,128}');

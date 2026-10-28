@@ -2,11 +2,15 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { ApiError, EsignetIdentite, EsignetMode, EsignetRetour, Session } from '../models';
+import { ApiError, EsignetConfiguration, EsignetIdentite, EsignetMode, EsignetRetour, Session } from '../models';
 
 const RETOUR_KEY = 'portail.esignet.retour';   // page où revenir après le parcours
 const MODE_KEY = 'portail.esignet.mode';
 const JETON_KEY = 'portail.esignet.inscription'; // jeton de l'écran de finalisation
+const ERREUR_KEY = 'portail.esignet.erreur';     // erreur du démarrage, affichée par la page de retour
+
+/** Erreurs que le bouton officiel renvoie sur la redirect_uri quand le par_callback échoue */
+export const ERREURS_BOUTON = ['request_uri_error', 'request_uri_timeout'];
 
 /**
  * Appels à l'API « création de compte avec eSignet » (/api/auth/esignet/*).
@@ -18,14 +22,48 @@ export class EsignetService {
   private readonly http = inject(HttpClient);
   private readonly api = `${environment.apiUrl}/auth/esignet`;
 
-  /** Étape A : demande l'URL eSignet au backend puis y redirige le navigateur. */
-  async demarrer(mode: EsignetMode, retour?: string): Promise<void> {
+  private configurationEnCours?: Promise<EsignetConfiguration>;
+
+  /** Paramètres publics du bouton officiel (authorizeUri, client_id, redirect_uri…), lus une fois. */
+  configuration(): Promise<EsignetConfiguration> {
+    this.configurationEnCours ??= firstValueFrom(this.http.get<EsignetConfiguration>(`${this.api}/configuration`))
+      .catch((e) => {
+        this.configurationEnCours = undefined; // nouvel essai au prochain affichage
+        throw e;
+      });
+    return this.configurationEnCours;
+  }
+
+  /**
+   * Étape A, appelée par le bouton officiel (par_callback du plugin @mosip/sign-in-with-esignet) :
+   * le backend génère state, nonce et PKCE, pousse la requête (PAR) et renvoie le request_uri ;
+   * le plugin redirige ensuite vers /authorize?client_id=…&request_uri=….
+   */
+  async demarrer(mode: EsignetMode, retour?: string): Promise<string> {
     sessionStorage.setItem(MODE_KEY, mode);
+    sessionStorage.removeItem(ERREUR_KEY);
     if (retour) sessionStorage.setItem(RETOUR_KEY, retour);
     else sessionStorage.removeItem(RETOUR_KEY);
 
-    const res = await firstValueFrom(this.http.post<{ authorization_url: string }>(`${this.api}/demarrer`, { mode }));
-    window.location.assign(res.authorization_url);
+    try {
+      const res = await firstValueFrom(this.http.post<{ request_uri: string }>(`${this.api}/demarrer`, { mode }));
+      return res.request_uri;
+    } catch (e) {
+      // Le plugin redirige alors vers la page de retour avec ?error=request_uri_error : on y affichera le vrai motif
+      sessionStorage.setItem(ERREUR_KEY, JSON.stringify(messageEsignet(e)));
+      throw e;
+    }
+  }
+
+  /** Motif détaillé d'un échec du démarrage (consommé une seule fois). */
+  consommerErreurDemarrage(): ReturnType<typeof messageEsignet> | null {
+    const brut = sessionStorage.getItem(ERREUR_KEY);
+    sessionStorage.removeItem(ERREUR_KEY);
+    try {
+      return brut ? JSON.parse(brut) : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Étapes B à F : transmet au backend ce qu'eSignet a renvoyé dans l'URL. */
@@ -79,10 +117,14 @@ const MESSAGES: Record<string, string> = {
   nonce_invalide: 'La réponse d’eSignet n’a pas pu être vérifiée. Recommencez.',
   acr_insuffisant: 'Ce mode d’authentification ne suffit pas pour créer un compte. Utilisez le code reçu par SMS ou la biométrie.',
   claim_manquant: 'Une information nécessaire n’a pas été partagée. Recommencez en acceptant le partage.',
-  nip_incoherent: 'Le NIP vérifié ne correspond pas à celui de votre compte. Contactez le support.',
+  nip_invalide: 'Le NIP transmis par le registre n’a pas un format valide. Contactez le support.',
+  nip_incoherent: 'Les informations du registre sont incohérentes avec votre NIP ou votre compte. Contactez le support.',
   nip_deja_rattache: 'Ce NIP est déjà associé à un autre compte. Contactez le support.',
   inscription_expiree: 'Le délai pour finaliser votre compte est dépassé. Recommencez.',
   configuration_incomplete: 'Le service eSignet n’est pas encore configuré pour ce portail.',
+  esignet_indisponible: 'Le service eSignet est momentanément indisponible. Réessayez dans quelques minutes.',
+  request_uri_error: 'Impossible de préparer la connexion à eSignet. Réessayez.',
+  request_uri_timeout: 'eSignet met trop de temps à répondre. Réessayez dans un instant.',
 };
 
 /** Message lisible pour une erreur du parcours eSignet. */

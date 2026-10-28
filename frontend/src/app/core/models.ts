@@ -91,6 +91,15 @@ export interface Session {
 /** Création de compte et connexion : uniquement avec eSignet */
 export type EsignetMode = 'creation' | 'connexion';
 
+/** Paramètres publics du bouton « Se connecter avec eSignet » (GET /api/auth/esignet/configuration) */
+export interface EsignetConfiguration {
+  authorize_uri: string;
+  client_id: string;
+  redirect_uri: string;
+  scope: string;
+  ui_locales: string;
+}
+
 export type EsignetRetour = ({ statut: 'connecte' } & Session) | { statut: 'finalisation'; jeton: string };
 
 /** Identité vérifiée affichée (lecture seule) sur l'écran de finalisation */

@@ -5,3 +5,7 @@ frontend/.angular/
 frontend/dist/
 node_modules/
 vendor/
+
+# Clés du client eSignet (serveur uniquement)
+secrets/
+*.pem

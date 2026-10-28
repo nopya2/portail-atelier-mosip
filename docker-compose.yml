@@ -40,12 +40,21 @@ x-backend-env: &backend-env
   MAIL_FROM_ADDRESS: no-reply@portail-services.ga
   MAIL_FROM_NAME: Portail des services
   PORTAIL_ADMIN_NIPS: ${PORTAIL_ADMIN_NIPS:-4A-0012-19870425}
-  # eSignet (création de compte avec identité vérifiée) — à renseigner pendant l'atelier
+  # eSignet (création de compte et connexion) — valeurs dans .env.docker, voir backend/config/esignet.php
   ESIGNET_ISSUER_URL: ${ESIGNET_ISSUER_URL:-}
   ESIGNET_INTERNAL_URL: ${ESIGNET_INTERNAL_URL:-}
+  ESIGNET_DISCOVERY_URL: ${ESIGNET_DISCOVERY_URL:-}
   ESIGNET_CLIENT_ID: ${ESIGNET_CLIENT_ID:-}
   ESIGNET_KEY_ID: ${ESIGNET_KEY_ID:-}
+  ESIGNET_ASSERTION_ALG: ${ESIGNET_ASSERTION_ALG:-PS256}
+  ESIGNET_USERINFO_PRIVATE_KEY_PATH: ${ESIGNET_USERINFO_PRIVATE_KEY_PATH:-}
   ESIGNET_REDIRECT_URI: http://localhost:4210/auth/esignet/retour
+  ESIGNET_SCOPE: ${ESIGNET_SCOPE:-openid profile}
+  ESIGNET_CLAIMS: ${ESIGNET_CLAIMS:-individual_id,name,given_name,family_name,birthdate,gender,email,phone_number,address}
+  ESIGNET_CLAIMS_ESSENTIELS: ${ESIGNET_CLAIMS_ESSENTIELS:-name,birthdate}
+  ESIGNET_CLAIM_NIP: ${ESIGNET_CLAIM_NIP:-individual_id}
+  ESIGNET_ACR_CREATION: ${ESIGNET_ACR_CREATION:-mosip:idp:acr:generated-code,mosip:idp:acr:biometrics}
+  ESIGNET_UI_LOCALES: ${ESIGNET_UI_LOCALES:-fr}
 
 services:
   backend:

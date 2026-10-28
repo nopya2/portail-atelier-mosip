@@ -15,11 +15,17 @@ use Symfony\Component\HttpFoundation\Cookie;
 /**
  * Points d'entrée HTTP de la création de compte et de la connexion — uniquement avec eSignet.
  * Ce contrôleur valide les entrées et gère la session ; toute la logique OIDC
- * est dans App\Services\Esignet\EsignetService (à implémenter pendant l'atelier).
+ * est dans App\Services\Esignet\EsignetService.
  */
 class EsignetController extends Controller
 {
     public function __construct(private readonly EsignetService $esignet) {}
+
+    /** Paramètres publics du bouton officiel « Se connecter avec eSignet » (sans secret). */
+    public function configuration(): JsonResponse
+    {
+        return response()->json($this->esignet->configurationBouton());
+    }
 
     /** Étape A : « Créer mon compte avec eSignet » ou « Se connecter avec eSignet ». */
     public function demarrer(Request $request): JsonResponse
@@ -31,7 +37,12 @@ class EsignetController extends Controller
         $resultat = $this->esignet->demarrer($data['mode'], $request);
 
         return response()
-            ->json(['authorization_url' => $resultat['authorization_url'], 'transaction_id' => $resultat['transaction_id']])
+            ->json([
+                'authorization_url' => $resultat['authorization_url'],
+                // request_uri : renvoyé au plugin @mosip/sign-in-with-esignet (par_callback)
+                'request_uri' => $resultat['request_uri'],
+                'transaction_id' => $resultat['transaction_id'],
+            ])
             ->cookie($this->cookieParcours($resultat['cookie']));
     }
 
