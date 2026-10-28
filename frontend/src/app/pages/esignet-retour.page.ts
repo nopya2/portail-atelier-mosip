@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
-import { EsignetService, messageErreurRetour, messageEsignet } from '../core/esignet/esignet.service';
+import { ERREURS_BOUTON, EsignetService, messageErreurRetour, messageEsignet } from '../core/esignet/esignet.service';
 
 /**
  * redirect_uri du client OIDC : eSignet renvoie ici ?code=…&state=… (ou ?error=…).
@@ -29,7 +29,7 @@ import { EsignetService, messageErreurRetour, messageEsignet } from '../core/esi
           }
         </div>
         <div class="row center">
-          <a routerLink="/inscription" class="btn btn-primary">Recommencer</a>
+          <a [routerLink]="esignet.mode() === 'connexion' ? '/connexion' : '/inscription'" class="btn btn-primary">Recommencer</a>
           <a routerLink="/" class="btn btn-secondary">Retour à l’accueil</a>
         </div>
       }
@@ -45,7 +45,7 @@ export class EsignetRetourPage {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
-  private readonly esignet = inject(EsignetService);
+  protected readonly esignet = inject(EsignetService);
 
   protected readonly erreur = signal<string | null>(null);
   protected readonly nonImplemente = signal<string | null>(null);
@@ -62,6 +62,16 @@ export class EsignetRetourPage {
 
     // Les paramètres ne doivent pas rester dans l'historique du navigateur
     history.replaceState(null, '', '/auth/esignet/retour');
+
+    // Échec du démarrage : le bouton officiel redirige ici (?error=request_uri_error) ; le motif détaillé
+    // (configuration, eSignet injoignable, étape non implémentée…) a été conservé par EsignetService
+    const demarrage = error && ERREURS_BOUTON.includes(error) ? this.esignet.consommerErreurDemarrage() : null;
+    if (demarrage) {
+      this.erreur.set(demarrage.message);
+      this.nonImplemente.set(demarrage.nonImplemente ?? null);
+      this.reference.set(demarrage.reference ?? null);
+      return;
+    }
 
     if (!state) {
       this.erreur.set(error ? messageErreurRetour(error, q.get('error_description')) : 'Réponse d’eSignet incomplète.');
