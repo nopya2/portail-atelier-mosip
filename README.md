@@ -1,7 +1,8 @@
 # Portail des services — base pour l'atelier MOSIP / eSignet
 
 Portail de démarches administratives (Angular + Laravel) servant de support à l'intégration d'eSignet.
-L'intégration eSignet elle-même **n'est pas incluse** : elle est à réaliser pendant l'atelier.
+L'intégration eSignet est **implémentée** (bouton officiel MOSIP + backend OIDC) ; production :
+https://portail-mosip.benga.online — procédure : `docs/MISE_EN_PRODUCTION_ESIGNET.md`.
 
 | Brique     | Techno                                   | Dossier     |
 |------------|------------------------------------------|-------------|
@@ -24,7 +25,7 @@ L'intégration eSignet elle-même **n'est pas incluse** : elle est à réaliser 
 Un compte ne se crée **qu'avec eSignet** : le NIP et l'état civil viennent du registre national, il n'existe plus
 d'inscription par téléphone ou email (formulaire, code de vérification et API correspondants supprimés).
 Parcours : `/inscription` → eSignet → `/auth/esignet/retour` → `/inscription/finaliser` (voir la section
-« Création de compte avec eSignet (atelier) »). La **connexion** passe aussi uniquement par eSignet
+« Création de compte avec eSignet »). La **connexion** passe aussi uniquement par eSignet
 (`/connexion` → eSignet → `/auth/esignet/retour`) : le portail ne stocke aucun mot de passe.
 
 
@@ -111,7 +112,7 @@ npx ng serve            # http://localhost:4210, /api relayé vers :8010 (proxy.
 
 Aucun compte n'est créé par le seeder. Un usager est **administrateur** (accès au Journal) si son NIP figure dans
 `PORTAIL_ADMIN_NIPS` : son compte est créé à sa première connexion eSignet, comme pour tout usager.
-Tant que l'intégration eSignet n'est pas codée, personne ne peut donc se connecter au portail.
+Tant qu'eSignet n'est pas configuré (`php artisan esignet:diagnostic`), personne ne peut donc se connecter au portail.
 
 ## API
 
@@ -125,23 +126,39 @@ Tant que l'intégration eSignet n'est pas codée, personne ne peut donc se conne
 | GET  | `/api/demandes` · POST `/api/services/{slug}/demandes` | authentifié |
 | GET  | `/api/admin/logs`, `/api/admin/logs/stats`, `/api/admin/logs/{id}` · POST `/api/admin/logs/test` | admin |
 
-## Création de compte avec eSignet (atelier)
+## Création de compte avec eSignet
 
-La plateforme est **préparée** ; la logique OIDC reste à coder pendant l'atelier
-(méthodologie : `docs/Fiche_atelier_Creer_un_compte_avec_eSignet.docx`).
+Méthodologie : `docs/Fiche_atelier_Creer_un_compte_avec_eSignet.docx` · mise en production :
+`docs/MISE_EN_PRODUCTION_ESIGNET.md`. Intégration calquée sur les applications de référence MOSIP
+`esignet-mock-services` (`mock-relying-party-ui` pour le bouton, `mock-relying-party-service` pour le backend),
+renforcée selon la fiche (PKCE, state/nonce côté serveur, cookie liant le parcours au navigateur).
 
-| Prêt | Où |
+```
+Angular                                  Laravel                                   eSignet
+───────                                  ───────                                   ───────
+bouton officiel (@mosip/sign-in-with-esignet)
+  └ par_callback ─► POST /demarrer ─────► A  state, nonce, PKCE, cookie HttpOnly
+                                            └ PAR signée (private_key_jwt PS256) ──► /oauth/par
+  ◄── request_uri ◄────────────────────────┘
+  └ redirection ──────────────────────────────────────────────────────────────────► /authorize
+/auth/esignet/retour ◄── ?code&state ─────────────────────────────────────────────┘
+  └ POST /retour ───────────────────────► B  state = cookie, non expiré, usage unique
+                                          C  code + code_verifier + client_assertion ► /token
+                                          D  id_token : JWKS, iss, aud, exp, nonce, acr
+                                          E  userinfo (JWS, ou JWE déchiffré) : sub, NIP, date de naissance
+                                          F  sub connu → connecté · inconnu → finalisation · NIP déjà pris → refus
+/inscription/finaliser ─► POST /inscription/{jeton} ► G  création du compte (+ mail / SMS)
+```
+
+| Élément | Où |
 |---|---|
-| BD : `users` (+ `esignet_sub`, `nip_source`, `nip_verifie_at`, `acr`, `registre_synchronise_at`, `password` nullable), `esignet_transactions`, `esignet_inscriptions` | `backend/database/migrations/2026_10_22_*` + modèles `EsignetTransaction`, `EsignetInscription` |
-| Configuration | `backend/config/esignet.php`, section « eSignet » de `.env.example` / `.env.docker.example` |
-| API (entrées validées, session, cookie HttpOnly du parcours) | `EsignetController` → `POST /api/auth/esignet/demarrer`, `POST /retour`, `GET` / `POST /inscription/{jeton}` |
-| Erreurs (journalisées, messages français côté Angular) | `EsignetException('<code>', '<message>', <statut>)` |
-| Écrans Angular | boutons « Créer mon compte avec eSignet » et « Se connecter avec eSignet », page de retour `/auth/esignet/retour`, écran `/inscription/finaliser`, badge « NIP vérifié », identité en lecture seule dans le profil |
-
-**À implémenter** : `backend/app/Services/Esignet/EsignetService.php`. Chaque méthode correspond à une étape de la fiche
-(A démarrer, B contrôle du retour, C jetons, D id_token, E userinfo, F matrice de décision, G finalisation) et décrit
-les contrôles obligatoires. Tant qu'elle n'est pas codée, elle lève `EtapeNonImplementee` : l'API répond **501** et
-l'écran affiche « Intégration en cours (étape X) ».
+| Protocole (découverte, JWKS, PAR, token, userinfo, JWE) | `backend/app/Services/Esignet/EsignetClient.php` |
+| Étapes A–G et matrice de décision | `backend/app/Services/Esignet/EsignetService.php` |
+| API | `EsignetController` → `GET /api/auth/esignet/configuration`, `POST /demarrer`, `POST /retour`, `GET` / `POST /inscription/{jeton}` |
+| Configuration | `backend/config/esignet.php`, section « eSignet » de `backend/.env.example` / `.env.docker.production.example` |
+| Bouton officiel | `frontend/src/app/core/esignet/esignet-button.ts` |
+| Outils | `php artisan esignet:cles` (clé du client + JWK à enregistrer), `php artisan esignet:diagnostic` |
+| Tests (eSignet simulé, scénarios de recette) | `backend/tests/Feature/EsignetTest.php` |
 
 ## Structure
 
