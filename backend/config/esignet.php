@@ -13,12 +13,22 @@ return [
     // Identique à l'issuer hors Docker ; dans Docker, le nom du conteneur (ex. http://esignet_mosip:8080).
     'internal_url' => rtrim((string) (env('ESIGNET_INTERNAL_URL') ?: env('ESIGNET_ISSUER_URL', '')), '/'),
 
+    // Document de découverte OIDC (URL des points d'accès, algorithmes, acr…), lu par le backend.
+    // Par défaut : <internal_url>/.well-known/openid-configuration
+    'discovery_url' => env('ESIGNET_DISCOVERY_URL') ?: null,
+    // Durée de mise en cache de la découverte et du JWKS (secondes ; le JWKS est rechargé si « kid » inconnu)
+    'cache_ttl' => (int) env('ESIGNET_CACHE_TTL', 3600),
+
     // Client OIDC enregistré dans eSignet (POST /client-mgmt/client)
     'client_id' => env('ESIGNET_CLIENT_ID'),
     'private_key_path' => env('ESIGNET_PRIVATE_KEY_PATH', storage_path('app/private/esignet/client-private.pem')),
     'key_id' => env('ESIGNET_KEY_ID'),
     // Algorithme du client_assertion : eSignet 2.x accepte PS256 (pas RS256)
     'assertion_alg' => env('ESIGNET_ASSERTION_ALG', 'PS256'),
+
+    // Clé privée de déchiffrement de /userinfo quand le client est enregistré en JWE (production).
+    // Vide : réponse JWS attendue (signée seulement).
+    'userinfo_private_key_path' => env('ESIGNET_USERINFO_PRIVATE_KEY_PATH') ?: null,
 
     // Page Angular qui reçoit le retour d'eSignet (doit figurer dans redirectUris du client)
     'redirect_uri' => env('ESIGNET_REDIRECT_URI', 'http://localhost:4210/auth/esignet/retour'),
@@ -27,6 +37,8 @@ return [
     'scope' => env('ESIGNET_SCOPE', 'openid profile'),
     'claims' => array_values(array_filter(explode(',', (string) env('ESIGNET_CLAIMS', 'individual_id,name,given_name,family_name,birthdate,gender,email,phone_number,address')))),
     'claim_nip' => env('ESIGNET_CLAIM_NIP', 'individual_id'),
+    // Claims demandés comme « essential » sur l'écran de consentement (le NIP l'est toujours)
+    'claims_essentiels' => array_values(array_filter(explode(',', (string) env('ESIGNET_CLAIMS_ESSENTIELS', 'name,birthdate')))),
     'ui_locales' => env('ESIGNET_UI_LOCALES', 'fr'),
 
     // Niveaux d'authentification acceptés pour CRÉER un compte (claim « acr » de l'id_token)

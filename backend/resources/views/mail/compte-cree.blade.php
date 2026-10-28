@@ -5,10 +5,10 @@
     <p>Bienvenue sur le portail des services.</p>
     <table cellpadding="6" style="border-collapse: collapse">
         <tr><td>NIP</td><td><strong>{{ $user->nip }}</strong></td></tr>
-        <tr><td>Identifiant de connexion</td><td>{{ $user->email }}</td></tr>
         <tr><td>Date</td><td>{{ $user->created_at->format('d/m/Y H:i') }}</td></tr>
     </table>
-    <p>Pensez à compléter votre profil (nom, prénom, adresse) pour pouvoir déposer vos demandes.</p>
+    <p>Votre identité a été vérifiée par le registre national. Pour vous connecter, utilisez
+       « Se connecter avec eSignet » : le portail ne vous demandera jamais de mot de passe.</p>
     <p style="font-size: 12px; color: #6b7280">
         Message envoyé par le portail des services — environnement de démonstration.
     </p>

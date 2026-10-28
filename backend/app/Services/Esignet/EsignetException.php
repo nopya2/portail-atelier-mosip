@@ -13,8 +13,8 @@ use Throwable;
  * Codes attendus par le frontend (messages en français côté Angular) :
  *   access_denied, consentement_refuse, transaction_invalide, transaction_expiree,
  *   invalid_grant, invalid_assertion, jeton_invalide, nonce_invalide, acr_insuffisant,
- *   claim_manquant, nip_incoherent, nip_deja_rattache,
- *   inscription_expiree, configuration_incomplete
+ *   claim_manquant, nip_invalide, nip_incoherent, nip_deja_rattache,
+ *   inscription_expiree, configuration_incomplete, esignet_indisponible
  *
  * Exemple : throw new EsignetException('acr_insuffisant', "Niveau d'authentification insuffisant.", 403);
  */
