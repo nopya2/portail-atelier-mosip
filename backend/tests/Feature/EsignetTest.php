@@ -40,8 +40,11 @@ class EsignetTest extends TestCase
 
     private string $kid = 'cle-1';
 
-    /** Paramètres reçus par la PAR simulée */
+    /** Paramètres reçus par la PAR simulée (ou lus dans l'URL d'autorisation sans PAR) */
     private array $par = [];
+
+    /** La découverte simulée publie-t-elle la PAR ? */
+    private bool $avecPar = true;
 
     /** Personnalisation des réponses simulées */
     private array $idTokenSurcharge = [];
@@ -126,6 +129,35 @@ class EsignetTest extends TestCase
         $transaction = EsignetTransaction::sole();
         $this->assertSame($this->par['state'], $transaction->state);
         $this->assertSame(JWT::urlsafeB64Encode(hash('sha256', $transaction->code_verifier, true)), $this->par['code_challenge']);
+    }
+
+    public function test_sans_par_redirige_vers_une_autorisation_classique_avec_pkce(): void
+    {
+        $this->avecPar = false;
+
+        $reponse = $this->postJson('/api/auth/esignet/demarrer', ['mode' => 'creation'])->assertOk();
+
+        $this->assertNull($reponse->json('request_uri'));
+        Http::assertNotSent(fn (HttpRequest $r) => str_ends_with($r->url(), '/oauth/par'));
+        $url = $reponse->json('authorization_url');
+        $this->assertStringStartsWith('http://esignet.test/authorize?client_id=portail-test&', $url);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $parametres);
+        $this->assertSame('code', $parametres['response_type']);
+        $this->assertSame('S256', $parametres['code_challenge_method']);
+        $this->assertSame('http://localhost:4210/auth/esignet/retour', $parametres['redirect_uri']);
+        $this->assertTrue(json_decode($parametres['claims'], true)['userinfo']['individual_id']['essential']);
+
+        $transaction = EsignetTransaction::sole();
+        $this->assertNull($transaction->request_uri);
+        $this->assertSame($parametres['state'], $transaction->state);
+        $this->assertSame(JWT::urlsafeB64Encode(hash('sha256', $transaction->code_verifier, true)), $parametres['code_challenge']);
+    }
+
+    public function test_parcours_complet_sans_par(): void
+    {
+        $this->avecPar = false;
+
+        $this->parcours('creation')->assertOk()->assertJson(['statut' => 'finalisation']);
     }
 
     public function test_creation_nominale_puis_connexion_suivante(): void
@@ -280,14 +312,14 @@ class EsignetTest extends TestCase
     private function simulerEsignet(): void
     {
         Http::fake([
-            '*/.well-known/openid-configuration' => Http::response([
+            '*/.well-known/openid-configuration' => fn () => Http::response(array_filter([
                 'issuer' => self::ISSUER,
                 'authorization_endpoint' => 'http://esignet.test/authorize',
-                'pushed_authorization_request_endpoint' => self::ISSUER.'/oauth/par',
+                'pushed_authorization_request_endpoint' => $this->avecPar ? self::ISSUER.'/oauth/par' : null,
                 'token_endpoint' => self::ISSUER.'/oauth/v2/token',
                 'userinfo_endpoint' => self::ISSUER.'/oidc/userinfo',
                 'jwks_uri' => self::ISSUER.'/oauth/.well-known/jwks.json',
-            ]),
+            ])),
             '*/oauth/.well-known/jwks.json' => function () {
                 $this->appelsJwks++;
                 $details = openssl_pkey_get_details(openssl_pkey_get_private(self::$cleEsignet));
@@ -384,6 +416,10 @@ class EsignetTest extends TestCase
     private function demarrer(string $mode = 'creation'): string
     {
         $reponse = $this->postJson('/api/auth/esignet/demarrer', ['mode' => $mode])->assertOk();
+        if (! $this->avecPar) {
+            // Sans PAR, eSignet reçoit les paramètres dans l'URL d'autorisation
+            parse_str((string) parse_url($reponse->json('authorization_url'), PHP_URL_QUERY), $this->par);
+        }
 
         return $reponse->getCookie(config('esignet.cookie'), false)->getValue();
     }

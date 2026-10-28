@@ -51,7 +51,8 @@ class EsignetDiagnostic extends Command
 
         $this->verifier('Découverte OIDC joignable', true, config('esignet.discovery_url') ?: config('esignet.internal_url').'/.well-known/openid-configuration');
         $this->verifier('issuer identique à ESIGNET_ISSUER_URL', $doc['issuer'] === config('esignet.issuer_url'), "découverte : {$doc['issuer']}");
-        $this->verifier('PAR disponible', ! empty($doc['pushed_authorization_request_endpoint']), $doc['pushed_authorization_request_endpoint'] ?? 'absent');
+        $this->verifier('PAR disponible', ! empty($doc['pushed_authorization_request_endpoint']),
+            $doc['pushed_authorization_request_endpoint'] ?? 'absente : requête d’autorisation classique (PKCE)', bloquant: false);
 
         $algs = $doc['token_endpoint_auth_signing_alg_values_supported'] ?? null;
         $this->verifier('Algorithme du client_assertion accepté', $algs === null || in_array(config('esignet.assertion_alg'), $algs, true),

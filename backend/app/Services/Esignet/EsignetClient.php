@@ -111,6 +111,25 @@ class EsignetClient
         return ['request_uri' => $reponse['request_uri'], 'expires_in' => (int) ($reponse['expires_in'] ?? 60)];
     }
 
+    /** PAR publiée par la découverte ? (absente sur certaines instances, ex. eSignet 1.6.2 du pilote Gabon) */
+    public function supportePar(): bool
+    {
+        return ! empty($this->decouverte()['pushed_authorization_request_endpoint']);
+    }
+
+    /**
+     * URL d'autorisation classique (sans PAR) : les paramètres passent par le navigateur ;
+     * state, nonce et PKCE restent générés et vérifiés par le backend.
+     *
+     * @param  array<string, string>  $parametres
+     */
+    public function urlAutorisationDirecte(array $parametres): string
+    {
+        return $this->pointAcces('authorization_endpoint').'?'.http_build_query(
+            ['client_id' => $this->clientId()] + $parametres, '', '&', PHP_QUERY_RFC3986,
+        );
+    }
+
     /** URL vers laquelle rediriger le navigateur après la PAR. */
     public function urlAutorisation(string $requestUri): string
     {

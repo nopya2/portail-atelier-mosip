@@ -4,8 +4,10 @@ Portail : **https://portail-mosip.benga.online** · redirect_uri : **https://por
 
 Le bouton « Se connecter avec eSignet » est le bouton officiel MOSIP (`@mosip/sign-in-with-esignet`, comme
 `mock-relying-party-ui`). Au clic, il appelle le backend (`POST /api/auth/esignet/demarrer`), qui fait la requête
-PAR signée (`private_key_jwt` PS256, PKCE S256) comme `mock-relying-party-service`, puis redirige vers eSignet.
-Le navigateur ne voit jamais de jeton.
+PAR signée (`private_key_jwt`, PKCE S256) comme `mock-relying-party-service`, puis redirige vers eSignet.
+Si la découverte d'eSignet ne publie pas `pushed_authorization_request_endpoint` (cas de l'eSignet 1.6.2 du
+pilote Gabon), le backend prépare une requête d'autorisation classique (mêmes state, nonce et PKCE) et le
+navigateur y est redirigé directement. Le navigateur ne voit jamais de jeton.
 
 ## 1. Côté eSignet (à obtenir de l'administrateur eSignet)
 
@@ -78,7 +80,7 @@ docker exec portail_prod_backend php artisan esignet:diagnostic
 ```
 
 Contrôle : variables renseignées, redirect_uri en HTTPS sur le portail, découverte joignable et `issuer` identique,
-PAR disponible, PS256 accepté, acr et claim NIP publiés, points d'accès joignables depuis le conteneur, clé
+PAR disponible (avertissement seulement), algorithme `ESIGNET_ASSERTION_ALG` accepté (RS256 en eSignet 1.x), acr et claim NIP publiés, points d'accès joignables depuis le conteneur, clé
 lisible et signature du `client_assertion`. Code de sortie ≠ 0 en cas d'échec.
 
 Puis dérouler la recette de la fiche atelier (section 10) sur https://portail-mosip.benga.online :
