@@ -54,7 +54,7 @@ x-backend-env: &backend-env
   ESIGNET_CLAIMS: ${ESIGNET_CLAIMS:-individual_id,name,given_name,family_name,birthdate,gender,email,phone_number,address}
   ESIGNET_CLAIMS_ESSENTIELS: ${ESIGNET_CLAIMS_ESSENTIELS:-name,birthdate}
   ESIGNET_CLAIM_NIP: ${ESIGNET_CLAIM_NIP:-individual_id}
-  ESIGNET_ACR_CREATION: ${ESIGNET_ACR_CREATION:-mosip:idp:acr:generated-code,mosip:idp:acr:biometrics}
+  ESIGNET_ACR_CREATION: ${ESIGNET_ACR_CREATION:-mosip:idp:acr:generated-code,mosip:idp:acr:biometrics,mosip:idp:acr:linked-wallet}
   ESIGNET_UI_LOCALES: ${ESIGNET_UI_LOCALES:-fr}
 
 services:

@@ -46,7 +46,7 @@ return [
     'ui_locales' => env('ESIGNET_UI_LOCALES', 'fr'),
 
     // Niveaux d'authentification acceptés pour CRÉER un compte (claim « acr » de l'id_token)
-    'acr_creation' => array_values(array_filter(explode(',', (string) env('ESIGNET_ACR_CREATION', 'mosip:idp:acr:generated-code,mosip:idp:acr:biometrics')))),
+    'acr_creation' => array_values(array_filter(explode(',', (string) env('ESIGNET_ACR_CREATION', 'mosip:idp:acr:generated-code,mosip:idp:acr:biometrics,mosip:idp:acr:linked-wallet')))),
 
     // Durées de vie (minutes)
     'transaction_ttl' => (int) env('ESIGNET_TRANSACTION_TTL', 10),

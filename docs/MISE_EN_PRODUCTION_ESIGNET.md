@@ -20,7 +20,7 @@ navigateur y est redirigé directement. Le navigateur ne voit jamais de jeton.
 | grantTypes / clientAuthMethods | `authorization_code` / `private_key_jwt` |
 | Clé publique | JWK affichée par `php artisan esignet:cles` (étape 3) |
 | Claims autorisés | `individual_id` (NIP, **obligatoire**), `name`, `given_name`, `family_name`, `birthdate`, `gender`, `email`, `phone_number`, `address` |
-| acr | `mosip:idp:acr:generated-code`, `mosip:idp:acr:biometrics` (pas de mot de passe seul) |
+| acr | `mosip:idp:acr:generated-code`, `mosip:idp:acr:biometrics`, `mosip:idp:acr:linked-wallet` (pas de mot de passe seul) |
 | Réponse /userinfo | JWS (défaut) ou JWE (voir étape 3 bis) |
 
 ## 2. Sur le serveur
