@@ -123,7 +123,7 @@ const MESSAGES: Record<string, string> = {
   invalid_assertion: 'Erreur de configuration du portail auprès d’eSignet. Réessayez plus tard.',
   jeton_invalide: 'La réponse d’eSignet n’a pas pu être vérifiée. Recommencez.',
   nonce_invalide: 'La réponse d’eSignet n’a pas pu être vérifiée. Recommencez.',
-  acr_insuffisant: 'Ce mode d’authentification ne suffit pas pour créer un compte. Utilisez le code reçu par SMS ou la biométrie.',
+  acr_insuffisant: 'Ce mode d’authentification ne suffit pas pour créer un compte. Utilisez le code reçu par SMS, la biométrie ou le portefeuille lié.',
   claim_manquant: 'Une information nécessaire n’a pas été partagée. Recommencez en acceptant le partage.',
   nip_invalide: 'Le NIP transmis par le registre n’a pas un format valide. Contactez le support.',
   nip_incoherent: 'Les informations du registre sont incohérentes avec votre NIP ou votre compte. Contactez le support.',
