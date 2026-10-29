@@ -6,8 +6,12 @@
 */
 return [
 
-    // URL publique d'eSignet = issuer attendu dans les jetons (claim « iss »)
+    // URL publique d'eSignet = issuer de la découverte (et claim « iss » des jetons, sauf ESIGNET_TOKEN_ISSUER)
     'issuer_url' => rtrim((string) env('ESIGNET_ISSUER_URL', ''), '/'),
+
+    // Claim « iss » attendu dans l'id_token et /userinfo, s'il diffère de l'issuer de la découverte
+    // (eSignet 1.x du pilote Gabon : <issuer>/v1/esignet). Vide = ESIGNET_ISSUER_URL.
+    'token_issuer' => rtrim((string) (env('ESIGNET_TOKEN_ISSUER') ?: env('ESIGNET_ISSUER_URL', '')), '/'),
 
     // URL utilisée par le backend pour ses appels serveur à serveur.
     // Identique à l'issuer hors Docker ; dans Docker, le nom du conteneur (ex. http://esignet_mosip:8080).

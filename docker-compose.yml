@@ -42,6 +42,7 @@ x-backend-env: &backend-env
   PORTAIL_ADMIN_NIPS: ${PORTAIL_ADMIN_NIPS:-4A-0012-19870425}
   # eSignet (création de compte et connexion) — valeurs dans .env.docker, voir backend/config/esignet.php
   ESIGNET_ISSUER_URL: ${ESIGNET_ISSUER_URL:-}
+  ESIGNET_TOKEN_ISSUER: ${ESIGNET_TOKEN_ISSUER:-}
   ESIGNET_INTERNAL_URL: ${ESIGNET_INTERNAL_URL:-}
   ESIGNET_DISCOVERY_URL: ${ESIGNET_DISCOVERY_URL:-}
   ESIGNET_CLIENT_ID: ${ESIGNET_CLIENT_ID:-}

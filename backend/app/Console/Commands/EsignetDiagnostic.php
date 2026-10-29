@@ -29,6 +29,9 @@ class EsignetDiagnostic extends Command
         Cache::forget('esignet.jwks');
 
         $this->verifier('ESIGNET_ISSUER_URL renseigné', (bool) config('esignet.issuer_url'), config('esignet.issuer_url'));
+        if (config('esignet.token_issuer') !== config('esignet.issuer_url')) {
+            $this->verifier('iss attendu dans les jetons (ESIGNET_TOKEN_ISSUER)', true, config('esignet.token_issuer'), bloquant: false);
+        }
         $this->verifier('ESIGNET_CLIENT_ID renseigné', (bool) config('esignet.client_id'), config('esignet.client_id'));
         $this->verifier('ESIGNET_KEY_ID renseigné', (bool) config('esignet.key_id'), config('esignet.key_id') ?: 'kid absent du client_assertion', bloquant: false);
 
