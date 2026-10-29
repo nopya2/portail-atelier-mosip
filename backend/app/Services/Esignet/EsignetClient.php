@@ -164,7 +164,11 @@ class EsignetClient
     public function userinfo(string $accessToken): string
     {
         try {
-            $reponse = $this->http()->withToken($accessToken)->get($this->urlInterne($this->pointAcces('userinfo_endpoint')));
+            // Réponse en application/jwt : avec « Accept: application/json », eSignet 1.x refuse avant
+            // même de lire le jeton (401 error="unknown_error")
+            // (pas $this->http() : son acceptJson() s'ajouterait à cet en-tête au lieu d'être remplacé)
+            $reponse = Http::timeout(config('esignet.http_timeout'))->accept('application/jwt')->withToken($accessToken)
+                ->get($this->urlInterne($this->pointAcces('userinfo_endpoint')));
         } catch (ConnectionException $e) {
             throw $this->injoignable($e);
         }
