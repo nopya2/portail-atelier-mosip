@@ -331,9 +331,11 @@ class EsignetClient
         $description = $corps['error_description'] ?? $corps['errors'][0]['errorMessage'] ?? null;
 
         if ($reponse->serverError() || $code === null) {
-            throw new EsignetException('esignet_indisponible', "eSignet a répondu {$reponse->status()} ({$etape}).", 502, [
+            // eSignet donne le motif d'un 401 dans WWW-Authenticate (ex. error="invalid_token"), corps vide
+            throw new EsignetException('esignet_indisponible', "eSignet a répondu {$reponse->status()} ({$etape}).", 502, array_filter([
                 'etape' => $etape, 'statut_http' => $reponse->status(), 'code' => $code,
-            ]);
+                'www_authenticate' => $reponse->header('WWW-Authenticate') ?: null,
+            ], fn ($v) => $v !== null));
         }
 
         // Erreur de configuration du portail (clé, aud, algorithme…) : alerte technique
