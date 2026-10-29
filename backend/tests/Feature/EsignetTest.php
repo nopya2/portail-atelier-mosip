@@ -372,7 +372,11 @@ class EsignetTest extends TestCase
                     ]),
                 ]);
             },
-            '*/oidc/userinfo' => function () {
+            '*/oidc/userinfo' => function (HttpRequest $requete) {
+                // Comme eSignet 1.x : sans application/jwt accepté, refus avant lecture du jeton
+                if (! str_contains($requete->header('Accept')[0] ?? '', 'application/jwt')) {
+                    return Http::response('', 401, ['WWW-Authenticate' => 'error="unknown_error"']);
+                }
                 $claims = array_filter($this->userinfoSurcharge + [
                     'iss' => self::ISSUER,
                     'aud' => self::CLIENT_ID,
