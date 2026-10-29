@@ -294,7 +294,8 @@ class EsignetService
 
         $nipBrut = $this->claim($claims, config('esignet.claim_nip'));
         if ($nipBrut === null || $nipBrut === '') {
-            throw new EsignetException('configuration_incomplete', 'Claim « '.config('esignet.claim_nip').' » (NIP) absent de /userinfo : vérifier les claims autorisés du client eSignet.', 502);
+            throw new EsignetException('configuration_incomplete', 'Claim « '.config('esignet.claim_nip').' » (NIP) absent de /userinfo : vérifier les claims autorisés du client eSignet.', 502,
+                ['claims_recus' => array_keys($claims)]); // noms seulement, jamais les valeurs
         }
 
         $nip = Nip::normalize(is_scalar($nipBrut) ? (string) $nipBrut : null);
