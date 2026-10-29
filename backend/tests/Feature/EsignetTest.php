@@ -280,10 +280,67 @@ class EsignetTest extends TestCase
         }
     }
 
-    public function test_claim_nip_absent_refuse(): void
+    public function test_sans_nip_du_registre_le_nip_saisi_cree_un_compte_declare(): void
     {
         $this->userinfoSurcharge = ['individual_id' => null];
-        $this->parcours('creation')->assertStatus(502)->assertJson(['error' => 'configuration_incomplete']);
+        $jeton = $this->parcours('creation')->assertOk()->assertJson(['statut' => 'finalisation'])->json('jeton');
+
+        $this->getJson("/api/auth/esignet/inscription/$jeton")
+            ->assertOk()->assertJson(['nip' => null, 'nip_a_saisir' => true, 'birthdate' => '1987-04-25']);
+
+        $contact = ['email' => 'marie@example.ga', 'cgu' => true];
+
+        // NIP absent, invalide ou incohérent avec la date de naissance du registre : refusé, jeton toujours valable
+        $this->postJson("/api/auth/esignet/inscription/$jeton", $contact)->assertStatus(422)->assertJsonValidationErrors('nip');
+        $this->postJson("/api/auth/esignet/inscription/$jeton", $contact + ['nip' => '4A-12'])->assertStatus(422)->assertJsonValidationErrors('nip');
+        $this->postJson("/api/auth/esignet/inscription/$jeton", $contact + ['nip' => '4A-0012-19900101'])->assertStatus(422)->assertJsonValidationErrors('nip');
+
+        $this->postJson("/api/auth/esignet/inscription/$jeton", $contact + ['nip' => '4a 0012 19870425'])
+            ->assertCreated()->assertJsonPath('user.nip', self::NIP);
+
+        $user = User::sole();
+        $this->assertSame('sub-marie', $user->esignet_sub);
+        $this->assertSame('declare', $user->nip_source);
+        $this->assertNull($user->nip_verifie_at);
+
+        // Connexion suivante, toujours sans NIP : reconnue par le sub
+        $this->parcours('connexion')->assertOk()->assertJson(['statut' => 'connecte']);
+        $this->assertSame('declare', $user->fresh()->nip_source);
+
+        // Le registre transmet enfin le NIP : il devient vérifié
+        $this->userinfoSurcharge = [];
+        $this->parcours('connexion')->assertOk()->assertJson(['statut' => 'connecte']);
+        $this->assertSame('esignet', $user->fresh()->nip_source);
+        $this->assertNotNull($user->fresh()->nip_verifie_at);
+    }
+
+    public function test_sans_nip_ni_date_de_naissance_du_registre_creation_refusee(): void
+    {
+        $this->userinfoSurcharge = ['individual_id' => null, 'birthdate' => null];
+        $this->parcours('creation')->assertStatus(422)->assertJson(['error' => 'claim_manquant']);
+        $this->assertSame(0, User::count());
+    }
+
+    public function test_nip_saisi_deja_rattache_refuse(): void
+    {
+        User::forceCreate(['nip' => self::NIP, 'esignet_sub' => 'ancien-sub', 'nip_source' => 'esignet', 'password' => null]);
+
+        $this->userinfoSurcharge = ['individual_id' => null];
+        $jeton = $this->parcours('creation')->assertOk()->json('jeton');
+        $this->postJson("/api/auth/esignet/inscription/$jeton", ['email' => 'marie@example.ga', 'cgu' => true, 'nip' => self::NIP])
+            ->assertStatus(409)->assertJson(['error' => 'nip_deja_rattache']);
+        $this->assertSame(1, User::count());
+    }
+
+    public function test_nip_saisi_ne_donne_pas_les_droits_administrateur(): void
+    {
+        config(['portail.admin_nips' => [self::NIP]]);
+        $this->userinfoSurcharge = ['individual_id' => null];
+        $jeton = $this->parcours('creation')->assertOk()->json('jeton');
+        $this->postJson("/api/auth/esignet/inscription/$jeton", ['email' => 'marie@example.ga', 'cgu' => true, 'nip' => self::NIP])
+            ->assertCreated();
+
+        $this->assertFalse(User::sole()->is_admin);
     }
 
     public function test_date_de_naissance_incoherente_avec_le_nip_refusee(): void

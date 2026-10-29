@@ -83,7 +83,7 @@ export class EsignetService {
     return firstValueFrom(this.http.get<EsignetIdentite>(`${this.api}/inscription/${jeton}`));
   }
 
-  finaliser(jeton: string, contact: { email: string | null; telephone: string | null; cgu: boolean }) {
+  finaliser(jeton: string, contact: { email: string | null; telephone: string | null; cgu: boolean; nip?: string | null }) {
     return firstValueFrom(this.http.post<Session>(`${this.api}/inscription/${jeton}`, contact));
   }
 

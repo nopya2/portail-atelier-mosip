@@ -104,7 +104,9 @@ export type EsignetRetour = ({ statut: 'connecte' } & Session) | { statut: 'fina
 
 /** Identité vérifiée affichée (lecture seule) sur l'écran de finalisation */
 export interface EsignetIdentite {
-  nip: string;
+  /** null quand le registre ne l'a pas transmis : l'usager le saisit (nip_a_saisir) */
+  nip: string | null;
+  nip_a_saisir: boolean;
   name: string | null;
   given_name: string | null;
   family_name: string | null;
