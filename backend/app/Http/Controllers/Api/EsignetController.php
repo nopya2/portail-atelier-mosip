@@ -92,6 +92,8 @@ class EsignetController extends Controller
             'email' => ['nullable', 'required_without:telephone', 'email:rfc', 'max:255', Rule::unique('users', 'email')],
             'telephone' => ['nullable', 'required_without:email', 'regex:/^\+241\d{7,9}$/', Rule::unique('users', 'phone_number')],
             'cgu' => ['accepted'],
+            // NIP saisi, quand le registre ne l'a pas transmis (contrôlé par EsignetService::finaliser)
+            'nip' => ['nullable', 'string', 'max:32'],
         ], [
             'email.required_without' => 'Renseignez au moins un moyen de contact (email ou téléphone).',
             'telephone.required_without' => 'Renseignez au moins un moyen de contact (email ou téléphone).',
@@ -105,6 +107,7 @@ class EsignetController extends Controller
             'email' => $data['email'] ?? null,
             'telephone' => $data['telephone'] ?? null,
             'cgu' => true,
+            'nip' => $data['nip'] ?? null,
         ]);
 
         return response()->json($this->session($user), 201);

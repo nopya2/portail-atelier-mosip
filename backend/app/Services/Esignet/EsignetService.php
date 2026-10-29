@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -266,9 +267,9 @@ class EsignetService
 
     /**
      * E. Lecture de /userinfo : JWS vérifié (JWE déchiffré d'abord), sub identique à l'id_token,
-     * NIP présent et valide, date de naissance cohérente avec le NIP.
+     * NIP valide s'il est fourni, date de naissance cohérente avec le NIP.
      *
-     * @return array<string, mixed> claims userinfo vérifiés (le NIP normalisé sous la clé 'nip')
+     * @return array<string, mixed> claims userinfo vérifiés (le NIP normalisé sous la clé 'nip', null si absent)
      */
     protected function lireUserinfo(array $jetons, array $idToken): array
     {
@@ -292,19 +293,21 @@ class EsignetService
             throw new EsignetException('jeton_invalide', '/userinfo : audience (aud) inattendue.', 401);
         }
 
+        // NIP facultatif : certaines instances (pilote Gabon) ne renvoient pas le claim ; l'usager
+        // est alors reconnu par son sub, et saisit son NIP à la création du compte (finaliser)
+        $nip = null;
         $nipBrut = $this->claim($claims, config('esignet.claim_nip'));
         if ($nipBrut === null || $nipBrut === '') {
-            throw new EsignetException('configuration_incomplete', 'Claim « '.config('esignet.claim_nip').' » (NIP) absent de /userinfo : vérifier les claims autorisés du client eSignet.', 502,
-                ['claims_recus' => array_keys($claims)]); // noms seulement, jamais les valeurs
-        }
-
-        $nip = Nip::normalize(is_scalar($nipBrut) ? (string) $nipBrut : null);
-        if (! $nip) {
-            throw new EsignetException('nip_invalide', 'NIP transmis par le registre au format invalide.', 422);
+            Log::info('eSignet : NIP absent de /userinfo', ['claims_recus' => array_keys($claims)]); // noms seulement, jamais les valeurs
+        } else {
+            $nip = Nip::normalize(is_scalar($nipBrut) ? (string) $nipBrut : null);
+            if (! $nip) {
+                throw new EsignetException('nip_invalide', 'NIP transmis par le registre au format invalide.', 422);
+            }
         }
 
         $naissance = $this->date($this->claim($claims, 'birthdate'));
-        if ($naissance && $naissance !== Nip::birthdate($nip)) {
+        if ($nip && $naissance && $naissance !== Nip::birthdate($nip)) {
             throw new EsignetException('nip_incoherent', 'Date de naissance du registre incohérente avec le NIP.', 409, ['securite' => true]);
         }
 
@@ -312,7 +315,7 @@ class EsignetService
         foreach (['name', 'given_name', 'family_name', 'gender', 'email', 'phone_number', 'address', 'picture', 'locale'] as $nom) {
             $identite[$nom] = $this->claim($claims, $nom);
         }
-        $identite['birthdate'] = Nip::birthdate($nip);
+        $identite['birthdate'] = $nip ? Nip::birthdate($nip) : $naissance;
         $identite['email'] = is_string($identite['email']) ? mb_strtolower(trim($identite['email'])) : null;
         $identite['phone_number'] = is_string($identite['phone_number']) ? Telephone::normalize($identite['phone_number']) : null;
         $identite['address'] = match (true) {
@@ -337,19 +340,21 @@ class EsignetService
 
         // sub connu → connexion, données du registre resynchronisées
         if ($user) {
-            if ($user->nip !== $nip) {
+            if ($nip !== null && $user->nip !== $nip) {
                 Log::alert('eSignet : NIP du registre différent de celui du compte', $contexte + ['user_id' => $user->id]);
                 throw new EsignetException('nip_incoherent', 'Le NIP vérifié ne correspond pas à celui du compte.', 409, $contexte);
             }
 
-            DB::transaction(function () use ($user, $claims, $idToken, $transaction) {
+            DB::transaction(function () use ($user, $nip, $claims, $idToken, $transaction) {
                 $user->fill($this->donneesRegistre($claims));
+                // NIP fourni par le registre : un NIP déclaré à la création devient vérifié
+                if ($nip !== null) {
+                    $user->forceFill(['nip_source' => 'esignet', 'nip_verifie_at' => $user->nip_verifie_at ?? now()]);
+                }
                 $user->forceFill([
-                    'nip_source' => 'esignet',
-                    'nip_verifie_at' => $user->nip_verifie_at ?? now(),
                     'acr' => $idToken['acr'],
                     'registre_synchronise_at' => now(),
-                    'is_admin' => in_array($user->nip, Nip::admins(), true),
+                    'is_admin' => $this->estAdmin($user->nip, $user->nip_source),
                 ])->save();
                 $this->terminer($transaction, $user);
             });
@@ -360,12 +365,18 @@ class EsignetService
         }
 
         // sub inconnu mais NIP déjà rattaché à un compte : anomalie, refus + alerte
-        if (User::where('nip', $nip)->exists()) {
+        if ($nip !== null && User::where('nip', $nip)->exists()) {
             Log::alert('eSignet : NIP déjà associé à un autre compte (sub différent)', $contexte);
             throw new EsignetException('nip_deja_rattache', 'Ce NIP est déjà associé à un autre compte.', 409, $contexte + ['securite' => true]);
         }
 
-        // sub et NIP inconnus → écran de finalisation (jeton à usage unique)
+        // Sans NIP du registre, le NIP saisi à la finalisation est contrôlé par la date de naissance :
+        // sans elle non plus, pas de création de compte
+        if ($nip === null && empty($claims['birthdate'])) {
+            throw new EsignetException('claim_manquant', 'Ni NIP ni date de naissance transmis par le registre : création de compte impossible.', 422, $contexte);
+        }
+
+        // sub inconnu → écran de finalisation (jeton à usage unique)
         $jeton = $this->aleatoire();
         DB::transaction(function () use ($transaction, $jeton, $sub, $nip, $claims, $idToken) {
             EsignetInscription::create([
@@ -399,6 +410,8 @@ class EsignetService
 
         return [
             'nip' => $inscription->nip,
+            // NIP non transmis par le registre : à saisir par l'usager (contrôlé par la date de naissance)
+            'nip_a_saisir' => $inscription->nip === null,
             'name' => $c['name'] ?? null,
             'given_name' => $c['given_name'] ?? null,
             'family_name' => $c['family_name'] ?? null,
@@ -414,7 +427,8 @@ class EsignetService
     /**
      * G. Création du compte après l'écran de finalisation, puis H. notification.
      *
-     * @param  array{email: ?string, telephone: ?string, cgu: bool}  $contact
+     * @param  array{email: ?string, telephone: ?string, cgu: bool, nip?: ?string}  $contact  nip : saisi par
+     *                                                                                    l'usager quand le registre ne l'a pas transmis
      */
     public function finaliser(string $jeton, array $contact): User
     {
@@ -425,15 +439,19 @@ class EsignetService
                 throw new EsignetException('inscription_expiree', 'Jeton d’inscription inconnu, expiré ou déjà utilisé.', 410);
             }
             $inscription->forceFill(['utilisee_at' => now()])->save();
+            $claims = $inscription->claims;
 
-            if (User::where('nip', $inscription->nip)->orWhere('esignet_sub', $inscription->sub)->exists()) {
+            // NIP du registre, sinon NIP saisi (une erreur annule la transaction : le jeton reste utilisable)
+            $nip = $inscription->nip ?? $this->nipDeclare($contact['nip'] ?? null, $claims['birthdate'] ?? null, $inscription);
+            $verifie = $inscription->nip !== null;
+
+            if (User::where('nip', $nip)->orWhere('esignet_sub', $inscription->sub)->exists()) {
                 Log::alert('eSignet : compte déjà créé pour ce NIP ou ce sub pendant la finalisation', ['inscription' => $inscription->id]);
                 throw new EsignetException('nip_deja_rattache', 'Un compte existe déjà pour cette identité.', 409);
             }
 
-            $claims = $inscription->claims;
             $user = new User($this->donneesRegistre($claims) + [
-                'nip' => $inscription->nip,
+                'nip' => $nip,
                 'email' => $contact['email'],
                 'phone_number' => $contact['telephone'],
                 'password' => null,
@@ -441,11 +459,11 @@ class EsignetService
             ]);
             $user->forceFill([
                 'esignet_sub' => $inscription->sub,
-                'nip_source' => 'esignet',
-                'nip_verifie_at' => now(),
+                'nip_source' => $verifie ? 'esignet' : 'declare',
+                'nip_verifie_at' => $verifie ? now() : null,
                 'acr' => $inscription->acr,
                 'registre_synchronise_at' => now(),
-                'is_admin' => in_array($inscription->nip, Nip::admins(), true),
+                'is_admin' => $this->estAdmin($nip, $verifie ? 'esignet' : 'declare'),
                 // Contact identique à celui du registre : déjà vérifié par le registre
                 'email_verified_at' => $contact['email'] && $contact['email'] === ($claims['email'] ?? null) ? now() : null,
                 'phone_verified_at' => $contact['telephone'] && $contact['telephone'] === ($claims['phone_number'] ?? null) ? now() : null,
@@ -456,7 +474,7 @@ class EsignetService
             return $user;
         });
 
-        Log::info('eSignet : compte créé', ['user_id' => $user->id, 'acr' => $user->acr]);
+        Log::info('eSignet : compte créé', ['user_id' => $user->id, 'acr' => $user->acr, 'nip_source' => $user->nip_source]);
         $this->notifier($user);
 
         return $user;
@@ -465,6 +483,34 @@ class EsignetService
     // ======================================================================
     //  Outils
     // ======================================================================
+
+    /**
+     * NIP saisi par l'usager quand le registre ne l'a pas transmis : format valide et date de naissance
+     * identique à celle du registre (sans date du registre, aucune création possible).
+     */
+    private function nipDeclare(?string $saisie, ?string $naissance, EsignetInscription $inscription): string
+    {
+        if (! $naissance) {
+            throw new EsignetException('claim_manquant', 'Date de naissance absente du registre : NIP saisi invérifiable.', 422);
+        }
+
+        $nip = Nip::normalize($saisie);
+        if (! $nip) {
+            throw ValidationException::withMessages(['nip' => $saisie ? 'NIP invalide (format '.Nip::FORMAT.').' : 'Renseignez votre NIP.']);
+        }
+        if (Nip::birthdate($nip) !== $naissance) {
+            Log::warning('eSignet : NIP saisi incohérent avec la date de naissance du registre', ['inscription' => $inscription->id]);
+            throw ValidationException::withMessages(['nip' => 'Ce NIP ne correspond pas à votre date de naissance enregistrée au registre.']);
+        }
+
+        return $nip;
+    }
+
+    /** Droits administrateur (PORTAIL_ADMIN_NIPS) : seulement pour un NIP vérifié par le registre. */
+    private function estAdmin(string $nip, ?string $source): bool
+    {
+        return $source === 'esignet' && in_array($nip, Nip::admins(), true);
+    }
 
     /** Claims demandés à /userinfo : le NIP et ceux de config('esignet.claims_essentiels') sont « essential ». */
     private function claimsDemandes(): array

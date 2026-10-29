@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth/auth.service';
 import { EsignetService, messageEsignet } from '../core/esignet/esignet.service';
 import { formatValue } from '../core/labels';
+import { NIP_EXAMPLE, NIP_FORMAT, formatNipInput, nipValidator } from '../core/nip';
 import { ApiError, EsignetIdentite } from '../core/models';
 
 /**
@@ -24,11 +25,15 @@ import { ApiError, EsignetIdentite } from '../core/models';
         <section class="card identite">
           <div class="row between">
             <h2>Votre identité</h2>
-            <span class="badge ok">NIP vérifié par eSignet</span>
+            @if (!id.nip_a_saisir) {
+              <span class="badge ok">NIP vérifié par eSignet</span>
+            }
           </div>
           <p class="muted small">Ces informations proviennent du registre national et ne sont pas modifiables ici.</p>
           <dl class="kv">
-            <dt>NIP</dt><dd class="mono">{{ id.nip }}</dd>
+            @if (!id.nip_a_saisir) {
+              <dt>NIP</dt><dd class="mono">{{ id.nip }}</dd>
+            }
             <dt>Nom</dt><dd>{{ id.family_name ?? '—' }}</dd>
             <dt>Prénom(s)</dt><dd>{{ id.given_name ?? id.name ?? '—' }}</dd>
             <dt>Date de naissance</dt><dd>{{ id.birthdate ?? '—' }}</dd>
@@ -38,12 +43,30 @@ import { ApiError, EsignetIdentite } from '../core/models';
         </section>
 
         <form class="card" [formGroup]="form" (ngSubmit)="creer()" novalidate>
-          <h2>Vos moyens de contact</h2>
-          <p class="muted small">Au moins un des deux est nécessaire pour recevoir les notifications de vos démarches.</p>
-
           @if (erreur()) {
             <div class="alert error" role="alert">{{ erreur() }}</div>
           }
+
+          @if (id.nip_a_saisir) {
+            <div class="field">
+              <label for="nip">Votre NIP</label>
+              <input id="nip" formControlName="nip" class="mono" autocomplete="off" [placeholder]="nipExemple"
+                     (input)="formaterNip()" [class.invalid]="invalide('nip')" />
+              <div class="field-hint">
+                Le registre ne l’a pas transmis : saisissez-le ({{ nipFormat }}). Il doit correspondre à votre date de naissance.
+              </div>
+              @if (form.controls.nip.getError('server'); as msg) {
+                <div class="field-error">{{ msg }}</div>
+              } @else if (invalide('nip')) {
+                <div class="field-error">
+                  {{ form.controls.nip.hasError('required') ? 'Renseignez votre NIP.' : 'NIP invalide (format ' + nipFormat + ').' }}
+                </div>
+              }
+            </div>
+          }
+
+          <h2>Vos moyens de contact</h2>
+          <p class="muted small">Au moins un des deux est nécessaire pour recevoir les notifications de vos démarches.</p>
 
           <div class="grid-2">
             <div class="field">
@@ -115,6 +138,8 @@ export class FinaliserPage {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   protected readonly format = formatValue;
+  protected readonly nipFormat = NIP_FORMAT;
+  protected readonly nipExemple = NIP_EXAMPLE;
 
   protected readonly chargement = signal(true);
   protected readonly busy = signal(false);
@@ -127,6 +152,7 @@ export class FinaliserPage {
     {
       email: ['', Validators.email],
       telephone: [''],
+      nip: [''],   // requis seulement quand le registre n'a pas transmis le NIP (voir charger)
       cgu: [false, Validators.requiredTrue],
     },
     { validators: (g) => (g.get('email')?.value || g.get('telephone')?.value ? null : { contact: true }) },
@@ -142,7 +168,12 @@ export class FinaliserPage {
     return Math.ceil(this.expireDans() / 60);
   }
 
-  protected invalide(name: 'email' | 'telephone'): boolean {
+  protected formaterNip(): void {
+    const c = this.form.controls.nip;
+    c.setValue(formatNipInput(c.value), { emitEvent: false });
+  }
+
+  protected invalide(name: 'email' | 'telephone' | 'nip'): boolean {
     const c = this.form.controls[name];
     return c.invalid && (c.touched || c.dirty);
   }
@@ -160,6 +191,10 @@ export class FinaliserPage {
       this.expireDans.set(id.expire_dans);
       // Contacts issus du registre proposés par défaut, modifiables
       this.form.patchValue({ email: id.email ?? '', telephone: id.phone_number ?? '' });
+      if (id.nip_a_saisir) {
+        this.form.controls.nip.setValidators([Validators.required, nipValidator]);
+        this.form.controls.nip.updateValueAndValidity();
+      }
     } catch (e) {
       const m = messageEsignet(e);
       this.erreur.set(m.message);
@@ -182,6 +217,7 @@ export class FinaliserPage {
         email: v.email.trim() || null,
         telephone: v.telephone.trim() || null,
         cgu: v.cgu,
+        nip: this.identite()?.nip_a_saisir ? v.nip : null,
       });
       this.esignet.oublierJeton();
       this.auth.ouvrirSession(session);
