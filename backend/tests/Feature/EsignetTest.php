@@ -76,6 +76,7 @@ class EsignetTest extends TestCase
 
         config([
             'esignet.issuer_url' => self::ISSUER,
+            'esignet.token_issuer' => self::ISSUER,
             'esignet.internal_url' => 'http://esignet-interne:8088/v1/esignet',
             'esignet.discovery_url' => null,
             'esignet.client_id' => self::CLIENT_ID,
@@ -256,6 +257,16 @@ class EsignetTest extends TestCase
 
         $this->idTokenSurcharge = ['aud' => 'autre-client'];
         $this->parcours('creation')->assertStatus(401)->assertJson(['error' => 'jeton_invalide']);
+    }
+
+    public function test_emetteur_des_jetons_distinct_de_la_decouverte(): void
+    {
+        // eSignet 1.x : iss des jetons = <issuer>/v1/esignet, différent de l'issuer de la découverte
+        config(['esignet.token_issuer' => self::ISSUER.'/v1/esignet']);
+        $this->parcours('creation')->assertStatus(401)->assertJson(['error' => 'jeton_invalide']);
+
+        $this->idTokenSurcharge = $this->userinfoSurcharge = ['iss' => self::ISSUER.'/v1/esignet'];
+        $this->parcours('creation')->assertOk()->assertJson(['statut' => 'finalisation']);
     }
 
     public function test_id_token_signe_par_une_autre_cle_refuse(): void

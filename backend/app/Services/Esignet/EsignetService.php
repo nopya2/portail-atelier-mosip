@@ -231,7 +231,7 @@ class EsignetService
         $claims = $this->client->verifierJws($jetons['id_token']);
         $contexte = ['transaction' => $transaction->id];
 
-        if (($claims['iss'] ?? null) !== config('esignet.issuer_url')) {
+        if (($claims['iss'] ?? null) !== config('esignet.token_issuer')) {
             throw new EsignetException('jeton_invalide', 'id_token : émetteur (iss) inattendu.', 401, $contexte + ['iss' => $claims['iss'] ?? null]);
         }
 
@@ -285,7 +285,7 @@ class EsignetService
         if (($claims['sub'] ?? null) !== $idToken['sub']) {
             throw new EsignetException('jeton_invalide', '/userinfo : sub différent de celui de l’id_token.', 401, ['securite' => true]);
         }
-        if (isset($claims['iss']) && $claims['iss'] !== config('esignet.issuer_url')) {
+        if (isset($claims['iss']) && $claims['iss'] !== config('esignet.token_issuer')) {
             throw new EsignetException('jeton_invalide', '/userinfo : émetteur (iss) inattendu.', 401);
         }
         if (isset($claims['aud']) && ! in_array($this->client->clientId(), (array) $claims['aud'], true)) {
