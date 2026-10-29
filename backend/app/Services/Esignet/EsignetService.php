@@ -427,8 +427,7 @@ class EsignetService
     /**
      * G. Création du compte après l'écran de finalisation, puis H. notification.
      *
-     * @param  array{email: ?string, telephone: ?string, cgu: bool, nip?: ?string}  $contact  nip : saisi par
-     *                                                                                    l'usager quand le registre ne l'a pas transmis
+     * @param  array{email: ?string, telephone: ?string, cgu: bool, nip?: ?string}  $contact  nip : saisi si absent du registre
      */
     public function finaliser(string $jeton, array $contact): User
     {
